@@ -9,6 +9,7 @@ MODEL_DIR = BASE_DIR / "data" / "models"
 
 MODEL_PATH = MODEL_DIR / "fraud_model.joblib"
 SCALER_PATH = MODEL_DIR / "scaler.joblib"
+THRESHOLD_PATH = MODEL_DIR / "thresholds.joblib"
 
 FEATURE_NAMES = [
     "amount",
@@ -24,12 +25,27 @@ class FraudModel:
     def __init__(self) -> None:
         self.model = None
         self.scaler = None
+        self.threshold_config = None
+
+        # Business-policy threshold.
+        # This determines when a transaction moves
+        # from SAFE to REVIEW.
         self.safe_threshold = 0.30
-        self.block_threshold = 0.70
+
+        # ML-optimized threshold.
+        self.block_threshold = None
 
     def load(self) -> None:
         self.model = joblib.load(MODEL_PATH)
         self.scaler = joblib.load(SCALER_PATH)
+
+        self.threshold_config = joblib.load(
+            THRESHOLD_PATH
+        )
+
+        self.block_threshold = float(
+            self.threshold_config["block_threshold"]
+        )
 
     def predict_probability(
         self,
@@ -40,8 +56,14 @@ class FraudModel:
         new_device: bool,
         new_ip: bool,
     ) -> float:
-        if self.model is None or self.scaler is None:
-            raise RuntimeError("Fraud model is not loaded")
+        if (
+            self.model is None
+            or self.scaler is None
+            or self.block_threshold is None
+        ):
+            raise RuntimeError(
+                "Fraud model is not loaded"
+            )
 
         features = pd.DataFrame(
             [
@@ -57,7 +79,9 @@ class FraudModel:
             columns=FEATURE_NAMES,
         )
 
-        features_scaled = self.scaler.transform(features)
+        features_scaled = self.scaler.transform(
+            features
+        )
 
         probability = self.model.predict_proba(
             features_scaled
@@ -66,6 +90,11 @@ class FraudModel:
         return round(float(probability), 4)
 
     def decide(self, probability: float) -> str:
+        if self.block_threshold is None:
+            raise RuntimeError(
+                "Fraud model thresholds are not loaded"
+            )
+
         if probability >= self.block_threshold:
             return "BLOCK"
 

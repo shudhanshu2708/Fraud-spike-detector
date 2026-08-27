@@ -24,6 +24,10 @@ FEATURES = [
 
 TARGET = "is_fraud"
 
+THRESHOLD_CONFIG_PATH = (
+    MODEL_DIR / "thresholds.joblib"
+)
+
 
 def main() -> None:
     validation = pd.read_csv(
@@ -43,11 +47,15 @@ def main() -> None:
 
     X_scaled = scaler.transform(X)
 
-    probabilities = model.predict_proba(X_scaled)[:, 1]
+    probabilities = model.predict_proba(
+        X_scaled
+    )[:, 1]
 
     results = []
 
-    for threshold in [x / 100 for x in range(10, 91, 5)]:
+    for threshold in [
+        x / 100 for x in range(10, 91, 5)
+    ]:
         predictions = (
             probabilities >= threshold
         ).astype(int)
@@ -100,24 +108,49 @@ def main() -> None:
         results_df["f1"].idxmax()
     ]
 
+    block_threshold = float(
+        best["threshold"]
+    )
+
+    threshold_config = {
+        "block_threshold": block_threshold,
+        "method": "f1_max",
+        "precision": float(best["precision"]),
+        "recall": float(best["recall"]),
+        "f1": float(best["f1"]),
+    }
+
+    MODEL_DIR.mkdir(exist_ok=True)
+
+    joblib.dump(
+        threshold_config,
+        THRESHOLD_CONFIG_PATH,
+    )
+
     print("\nBest F1 Threshold")
     print("=================")
 
     print(
-        f"Threshold: {best['threshold']:.2f}"
+        f"Threshold: {block_threshold:.2f}"
     )
 
     print(
-        f"Precision: {best['precision']:.4f}"
+        f"Precision: "
+        f"{threshold_config['precision']:.4f}"
     )
 
     print(
-        f"Recall: {best['recall']:.4f}"
+        f"Recall: "
+        f"{threshold_config['recall']:.4f}"
     )
 
     print(
-        f"F1: {best['f1']:.4f}"
+        f"F1: "
+        f"{threshold_config['f1']:.4f}"
     )
+
+    print("\nSaved:")
+    print(THRESHOLD_CONFIG_PATH)
 
 
 if __name__ == "__main__":
