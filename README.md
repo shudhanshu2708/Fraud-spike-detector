@@ -1,116 +1,273 @@
-# Vendly
+# [NEW_PROJECT_NAME]
 
-A production-grade e-commerce backend built with FastAPI, PostgreSQL, and Redis — focused on demonstrating real-world backend engineering practices around authentication, security, and clean API design.
+ML-powered transaction fraud detection backend built with FastAPI, PostgreSQL, Redis, and scikit-learn.
 
-> **Status:** Auth module in progress. Core e-commerce features (products, cart, orders, payments) are planned next.
+The system evaluates transactions using real-time behavioral features and a trained machine-learning model, then classifies them as:
 
-## Tech Stack
+- SAFE
+- REVIEW
+- BLOCK
 
-- **Framework:** FastAPI
-- **Database:** PostgreSQL (via SQLAlchemy ORM)
-- **Cache / Token Store:** Redis
-- **Auth:** JWT (access + refresh tokens) via `python-jose`
-- **Password Hashing:** `bcrypt` (direct, not via `passlib` — see Notes)
-- **Config Management:** `pydantic-settings`
-- **Containerization:** Docker (Postgres + Redis run as containers locally)
+It also demonstrates authentication, authorization, idempotency, database migrations, Redis feature storage, and automated testing.
 
-## Features Implemented
+## Architecture
 
-### Auth Module
+Client
+  |
+  v
+FastAPI
+  |
+  +-- Authentication --> PostgreSQL
+  |
+  +-- Transactions
+         |
+         +--> Redis Velocity Features
+         |
+         +--> Redis Device/IP Features
+         |
+         +--> ML Fraud Model
+                    |
+                    +--> SAFE
+                    +--> REVIEW
+                    +--> BLOCK
+         |
+         v
+     PostgreSQL
 
-| Route | Method | Status | Description |
-|---|---|---|---|
-| `/auth/signup` | POST | ✅ Done | Registers a new user, hashes password with bcrypt, returns access + refresh tokens |
-| `/auth/login` | POST | ✅ Done | Verifies credentials, returns access + refresh tokens |
-| `/auth/refresh` | POST | ✅ Done | Verifies refresh token against Redis, **rotates** it (old token is invalidated), returns a new access + refresh token pair |
-| `/auth/logout` | POST | 🔲 Pending | Will revoke the refresh token from Redis |
-| `/auth/me` | GET | 🔲 Pending | Will return current authenticated user's info (protected route) |
-| `/auth/change-password` | POST | 🔲 Pending | Optional — change password for logged-in user |
-| `/auth/logout-all` | POST | 🔲 Pending | Optional — revoke all active sessions for a user |
+## Features
 
-### Security Design Choices
+### Authentication
 
-- **Password hashing:** Passwords are hashed with `bcrypt` before storage — never stored in plain text.
-- **JWT access tokens:** Short-lived (15 min default), stateless, signed with a secret key.
-- **Refresh token rotation:** Refresh tokens are random, cryptographically secure strings (`secrets.token_urlsafe`) stored in Redis with an expiry (7 days default). Each refresh token can be used **exactly once** — using it issues a new refresh token and immediately invalidates the old one. This limits the damage if a refresh token is ever leaked.
-- **Role-based structure:** `User` model includes a `role` field (`customer` / `admin`) via a Python enum, enforced at the DB level.
+- User signup and login
+- bcrypt password hashing
+- JWT access tokens
+- Short-lived access tokens
+- Secure refresh tokens
+- Refresh-token rotation
+- Refresh-token revocation
+- Logout
+- Logout from all sessions
+- Password change
+- Protected user profile
+- Role-based authorization
 
-## Project Structure
+### Transaction Processing
 
-```
-vendly/
-├── app/
-│   ├── main.py                 # App entrypoint, router mounting, table creation
-│   ├── config.py               # Environment-based settings (pydantic-settings)
-│   ├── database.py              # SQLAlchemy engine, session, Base
-│   ├── redis_client.py         # Redis connection client
-│   ├── models/
-│   │   └── user.py             # User table definition
-│   ├── schemas/
-│   │   └── auth.py             # Pydantic request/response schemas
-│   └── auth/
-│       ├── security.py         # Password hashing, JWT creation, refresh token storage
-│       ├── dependencies.py     # get_current_user (JWT verification dependency)
-│       └── router.py           # Auth route handlers
-├── requirements.txt
-├── docker-compose.yml           # (planned)
-├── .env.example
-└── .gitignore
-```
+- Authenticated transaction creation
+- Transaction persistence with PostgreSQL
+- Transaction history
+- Pagination
+- Status filtering
+- Transaction ownership enforcement
+- Individual transaction lookup
+- Risk information persistence
 
-## Setup
+### Fraud Detection
 
-### Prerequisites
-- Python 3.13
-- Docker Desktop (for Postgres + Redis containers)
+The fraud engine uses:
 
-### 1. Clone and set up virtual environment
-```bash
-git clone <repo-url>
-cd vendly
-python -m venv .venv
-.venv\Scripts\Activate.ps1      # Windows PowerShell
-```
+- Transaction count in the last 1 minute
+- Transaction count in the last 5 minutes
+- Transaction amount in the last 5 minutes
+- New device detection
+- New IP detection
+- Current transaction amount
 
-### 2. Install dependencies
-```bash
-python -m pip install -r requirements.txt
-```
+The ML model produces a fraud probability which is mapped to:
 
-### 3. Start Postgres and Redis (Docker)
-```bash
-docker run --name vendly-postgres -e POSTGRES_USER=vendly_user -e POSTGRES_PASSWORD=vendly_pass -e POSTGRES_DB=vendly -p 5433:5432 -d postgres
+SAFE     < 0.30
 
-docker run --name vendly-redis -p 6380:6379 -d redis
-```
+REVIEW   0.30 - < 0.70
 
-### 4. Configure environment variables
-Copy `.env.example` to `.env` and fill in real values:
-```
-DATABASE_URL=postgresql://vendly_user:vendly_pass@localhost:5433/vendly
-JWT_SECRET_KEY=your-secret-key-here
-REDIS_URL=redis://localhost:6380/0
-```
+BLOCK    >= 0.70
 
-### 5. Run the server
-```bash
-python -m uvicorn app.main:app --reload
-```
+### Redis Feature Store
 
-API docs available at: `http://127.0.0.1:8000/docs`
+Redis stores derived behavioral features including:
 
-## Notes / Known Gotchas
+- Transaction velocity
+- Rolling transaction amounts
+- Known devices
+- Known IP addresses
+- Refresh tokens
 
-- **`passlib` was dropped** in favor of calling `bcrypt` directly, due to a compatibility bug between `passlib`'s bcrypt backend detection and newer `bcrypt` (4.1+) releases.
-- Docker containers do **not** auto-restart after a system reboot by default. Run `docker start vendly-postgres vendly-redis` (or set a restart policy) after restarting your machine.
-- Always activate the virtual environment before installing packages or running the server — mixing a global Python install with the project's venv is a common source of `ModuleNotFoundError`.
+Redis is treated as a derived feature store rather than the source of truth for transactions.
 
-## Roadmap
+### Idempotency
 
-- [ ] Finish remaining auth routes (`/logout`, `/me`, `/change-password`, `/logout-all`)
-- [ ] Products module (CRUD, categories, search/filter)
-- [ ] Cart module (Redis-backed)
-- [ ] Orders module (status transitions, order history)
-- [ ] Mock payment flow with idempotency handling
-- [ ] Dockerize the full app (`docker-compose.yml`)
-- [ ] Deploy (Railway / Render)
+Transaction creation requires an `Idempotency-Key`.
+
+The system:
+
+- Prevents duplicate processing of the same request
+- Returns the existing transaction for a valid retry
+- Returns `409 Conflict` when an idempotency key is reused for different transaction data
+- Uses a database uniqueness constraint for additional protection against concurrent requests
+
+### Admin Review
+
+Administrators can:
+
+- View all transactions
+- Filter transactions by status
+- Approve REVIEW transactions
+- Reject REVIEW transactions
+
+Customers cannot access admin endpoints.
+
+## API
+
+### Authentication
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/auth/signup` | Register a user |
+| POST | `/auth/login` | Authenticate a user |
+| POST | `/auth/refresh` | Rotate refresh token |
+| POST | `/auth/logout` | Revoke refresh token |
+| GET | `/auth/me` | Get current user |
+| POST | `/auth/change-password` | Change password |
+| POST | `/auth/logout-all` | Revoke all user sessions |
+
+### Transactions
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/transactions/` | Create and evaluate transaction |
+| GET | `/transactions/` | Get user's transactions |
+| GET | `/transactions/{transaction_id}` | Get a transaction |
+
+### Admin
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/admin/transactions` | View all transactions |
+| POST | `/admin/transactions/{transaction_id}/approve` | Approve REVIEW transaction |
+| POST | `/admin/transactions/{transaction_id}/reject` | Reject REVIEW transaction |
+
+### Health
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | API and ML model health |
+
+Interactive API documentation:
+
+`http://127.0.0.1:8000/docs`
+
+## ML Pipeline
+
+The model development pipeline is located in `data/`.
+
+```text
+transactions.csv
+      |
+      v
+generate_dataset.py
+      |
+      v
+split_dataset.py
+      |
+      +--> train.csv
+      +--> validation.csv
+      +--> test.csv
+      |
+      v
+train_model.py
+      |
+      v
+fraud_model.joblib
+scaler.joblib
+      |
+      +--> evaluate_model.py
+      |
+      +--> optimize_threshold.py
+
+Tech Stack
+Python
+FastAPI
+Uvicorn
+PostgreSQL
+SQLAlchemy
+Alembic
+Redis
+Pydantic
+pydantic-settings
+JWT
+python-jose
+bcrypt
+pandas
+NumPy
+scikit-learn
+joblib
+pytest
+Docker / Docker Compose
+
+[NEW_PROJECT_NAME]/
+|
++-- app/
+|   +-- api/
+|   |   +-- admin.py
+|   |   +-- transactions.py
+|   |
+|   +-- auth/
+|   |   +-- dependencies.py
+|   |   +-- router.py
+|   |   +-- security.py
+|   |
+|   +-- models/
+|   |   +-- transaction.py
+|   |   +-- user.py
+|   |
+|   +-- schemas/
+|   |   +-- auth.py
+|   |   +-- risk.py
+|   |   +-- transaction.py
+|   |
+|   +-- services/
+|       +-- identity_features.py
+|       +-- ml_model.py
+|       +-- risk_engine.py
+|       +-- velocity.py
+|
++-- alembic/
+|   +-- versions/
+|   +-- env.py
+|
++-- data/
+|   +-- models/
+|   |   +-- fraud_model.joblib
+|   |   +-- scaler.joblib
+|   |
+|   +-- generate_dataset.py
+|   +-- split_dataset.py
+|   +-- train_model.py
+|   +-- evaluate_model.py
+|   +-- optimize_threshold.py
+|   +-- transactions.csv
+|   +-- train.csv
+|   +-- validation.csv
+|   +-- test.csv
+|
++-- tests/
+|   +-- test_auth.py
+|   +-- test_refresh_tokens.py
+|   +-- test_transactions.py
+|   +-- test_api_transactions.py
+|   +-- test_idempotency.py
+|   +-- test_ml_model.py
+|   +-- test_feature_cache_failure.py
+|
++-- alembic.ini
++-- docker-compose.yml
++-- requirements.txt
++-- .gitignore
+
+Setup
+Requirements
+Python 3.13
+Docker Desktop
+Git
+
+git clone <(https://github.com/shudhanshu2708/Vendly)>
+cd [NEW_PROJECT_NAME]
