@@ -26,6 +26,7 @@ from app.services.identity_features import (
     check_identity,
     record_identity,
 )
+from app.services.rate_limiting import check_rate_limit
 from app.services.risk_engine import calculate_risk
 from app.services.velocity import (
     VelocityStoreUnavailable,
@@ -80,7 +81,15 @@ def create_transaction(
 ):
     request_id = request.state.request_id
 
-    # 1. Idempotency check
+    # 1. Rate limit authenticated transactions
+    check_rate_limit(
+        request=request,
+        limit=30,
+        window_seconds=60,
+        key_suffix=f"transaction:{current_user.id}",
+    )
+
+    # 2. Idempotency check
     existing_transaction = (
         db.query(Transaction)
         .filter(Transaction.idempotency_key == idempotency_key)
@@ -99,7 +108,7 @@ def create_transaction(
 
         return _idempotency_response(existing_transaction)
 
-    # 2. Read current velocity before this transaction
+    # 3. Read current velocity before this transaction
     try:
         velocity = get_velocity(current_user.id)
     except VelocityStoreUnavailable:
@@ -108,7 +117,7 @@ def create_transaction(
             detail="Fraud feature store temporarily unavailable",
         )
 
-    # 3. Check device/IP history
+    # 4. Check device/IP history
     try:
         identity = check_identity(
             user_id=current_user.id,
@@ -121,7 +130,7 @@ def create_transaction(
             detail="Fraud identity store temporarily unavailable",
         )
 
-    # 4. Calculate risk
+    # 5. Calculate risk
     risk = calculate_risk(
         amount=float(transaction.amount),
         transaction_count_1m=velocity.transactions_1m,
@@ -131,7 +140,7 @@ def create_transaction(
         new_ip=identity.new_ip,
     )
 
-    # 5. Block high-risk transaction
+    # 6. Block high-risk transaction
     if risk.decision == "BLOCK":
         return {
             "transaction_id": None,
@@ -145,7 +154,7 @@ def create_transaction(
             "created_at": None,
         }
 
-    # 6. Persist allowed transaction
+    # 7. Persist allowed transaction
     new_transaction = Transaction(
         user_id=current_user.id,
         amount=transaction.amount,
@@ -197,7 +206,7 @@ def create_transaction(
 
         return _idempotency_response(existing_transaction)
 
-    # 7. Update Redis feature stores
+    # 8. Update Redis feature stores
     redis_velocity_updated = record_transaction(
         user_id=current_user.id,
         amount=new_transaction.amount,

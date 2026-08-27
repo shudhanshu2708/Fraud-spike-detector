@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -20,6 +20,7 @@ from app.schemas.auth import (
     UserLogin,
     UserSignup,
 )
+from app.services.rate_limiting import check_rate_limit
 
 
 router = APIRouter()
@@ -30,9 +31,17 @@ router = APIRouter()
     response_model=TokenResponse,
 )
 def sign_up(
+    request: Request,
     user_data: UserSignup,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
+    check_rate_limit(
+        request=request,
+        limit=5,
+        window_seconds=60,
+        key_suffix="signup",
+    )
+
     existing_user = (
         db.query(User)
         .filter(User.email == user_data.email)
@@ -75,9 +84,17 @@ def sign_up(
     response_model=TokenResponse,
 )
 def login(
+    request: Request,
     user_data: UserLogin,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
+    check_rate_limit(
+        request=request,
+        limit=10,
+        window_seconds=60,
+        key_suffix="login",
+    )
+
     user = (
         db.query(User)
         .filter(User.email == user_data.email)
@@ -114,8 +131,16 @@ def login(
     response_model=TokenResponse,
 )
 def refresh(
+    request: Request,
     data: RefreshRequest,
 ) -> TokenResponse:
+    check_rate_limit(
+        request=request,
+        limit=20,
+        window_seconds=60,
+        key_suffix="refresh",
+    )
+
     email = revoke_refresh_token(data.refresh_token)
 
     if email is None:
