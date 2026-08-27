@@ -4,9 +4,13 @@ from uuid import uuid4
 
 from app.redis_client import redis_client
 
+
+VELOCITY_WINDOW_SECONDS = 300
+ONE_MINUTE_SECONDS = 60
+
+
 class VelocityStoreUnavailable(Exception):
     """Raised when the Redis velocity store is unavailable."""
-    
 
 
 @dataclass
@@ -31,30 +35,28 @@ def record_transaction(
     must not invalidate an already-persisted transaction.
 
     Returns:
-        True  -> Redis update succeeded
-        False -> Redis update failed
+        True if the Redis update succeeded.
+        False if the Redis update failed.
     """
     try:
         now = time()
         key = _get_key(user_id)
-
         transaction_id = str(uuid4())
 
-        # Store transaction timestamp.
         redis_client.zadd(
             key,
             {transaction_id: now},
         )
 
-        # Store transaction amount separately.
+        amount_key = f"{key}:amounts"
+
         redis_client.hset(
-            f"{key}:amounts",
+            amount_key,
             transaction_id,
             float(amount),
         )
 
-        # Keep only the last 5 minutes.
-        cutoff = now - 300
+        cutoff = now - VELOCITY_WINDOW_SECONDS
 
         redis_client.zremrangebyscore(
             key,
@@ -62,14 +64,11 @@ def record_transaction(
             cutoff,
         )
 
-        # Remove stale amount entries.
         active_ids = redis_client.zrange(
             key,
             0,
             -1,
         )
-
-        amount_key = f"{key}:amounts"
 
         all_amount_ids = redis_client.hkeys(
             amount_key
@@ -96,8 +95,8 @@ def get_velocity(
         now = time()
         key = _get_key(user_id)
 
-        cutoff_5m = now - 300
-        cutoff_1m = now - 60
+        cutoff_5m = now - VELOCITY_WINDOW_SECONDS
+        cutoff_1m = now - ONE_MINUTE_SECONDS
 
         transactions = redis_client.zrange(
             key,

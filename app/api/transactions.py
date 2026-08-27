@@ -37,6 +37,35 @@ from app.services.velocity import (
 router = APIRouter()
 
 
+def _is_same_transaction(
+    existing_transaction: Transaction,
+    transaction: TransactionCreate,
+) -> bool:
+    return (
+        float(existing_transaction.amount) == float(transaction.amount)
+        and existing_transaction.currency == transaction.currency
+        and existing_transaction.merchant_id == transaction.merchant_id
+        and existing_transaction.device_id == transaction.device_id
+        and existing_transaction.ip_address == transaction.ip_address
+    )
+
+
+def _idempotency_response(
+    transaction: Transaction,
+) -> dict:
+    return {
+        "transaction_id": transaction.id,
+        "transaction_created": False,
+        "risk_score": 0.0,
+        "decision": "ALREADY_PROCESSED",
+        "reasons": ["idempotency_key_already_processed"],
+        "transactions_1m": 0,
+        "transactions_5m": 0,
+        "amount_5m": 0.0,
+        "created_at": transaction.created_at,
+    }
+
+
 @router.post(
     "/",
     response_model=TransactionRiskResponse,
@@ -59,32 +88,16 @@ def create_transaction(
     )
 
     if existing_transaction is not None:
-        same_request = (
-            float(existing_transaction.amount)
-            == float(transaction.amount)
-            and existing_transaction.currency == transaction.currency
-            and existing_transaction.merchant_id == transaction.merchant_id
-            and existing_transaction.device_id == transaction.device_id
-            and existing_transaction.ip_address == transaction.ip_address
-        )
-
-        if not same_request:
+        if not _is_same_transaction(
+            existing_transaction,
+            transaction,
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Idempotency key already used for a different transaction",
             )
 
-        return {
-            "transaction_id": existing_transaction.id,
-            "transaction_created": False,
-            "risk_score": 0.0,
-            "decision": "ALREADY_PROCESSED",
-            "reasons": ["idempotency_key_already_processed"],
-            "transactions_1m": 0,
-            "transactions_5m": 0,
-            "amount_5m": 0.0,
-            "created_at": existing_transaction.created_at,
-        }
+        return _idempotency_response(existing_transaction)
 
     # 2. Read current velocity before this transaction
     try:
@@ -173,32 +186,16 @@ def create_transaction(
         if existing_transaction is None:
             raise
 
-        same_request = (
-            float(existing_transaction.amount)
-            == float(transaction.amount)
-            and existing_transaction.currency == transaction.currency
-            and existing_transaction.merchant_id == transaction.merchant_id
-            and existing_transaction.device_id == transaction.device_id
-            and existing_transaction.ip_address == transaction.ip_address
-        )
-
-        if not same_request:
+        if not _is_same_transaction(
+            existing_transaction,
+            transaction,
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Idempotency key already used for a different transaction",
             )
 
-        return {
-            "transaction_id": existing_transaction.id,
-            "transaction_created": False,
-            "risk_score": 0.0,
-            "decision": "ALREADY_PROCESSED",
-            "reasons": ["idempotency_key_already_processed"],
-            "transactions_1m": 0,
-            "transactions_5m": 0,
-            "amount_5m": 0.0,
-            "created_at": existing_transaction.created_at,
-        }
+        return _idempotency_response(existing_transaction)
 
     # 7. Update Redis feature stores
     redis_velocity_updated = record_transaction(
@@ -262,7 +259,6 @@ def get_transactions(
         )
 
     total = query.count()
-
     offset = (page - 1) * page_size
 
     transactions = (

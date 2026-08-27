@@ -1,16 +1,13 @@
-from contextlib import asynccontextmanager
 import time
 import uuid
+from contextlib import asynccontextmanager
 
-from fastapi import Request
-from fastapi import FastAPI
-
-from app.auth.router import router as auth_router
-from app.api.transactions import router as transaction_router
-from app.services.ml_model import fraud_model
+from fastapi import FastAPI, Request
 
 from app.api.admin import router as admin_router
-
+from app.api.transactions import router as transaction_router
+from app.auth.router import router as auth_router
+from app.services.ml_model import fraud_model
 
 
 @asynccontextmanager
@@ -30,6 +27,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
 app.include_router(
     auth_router,
     prefix="/auth",
@@ -42,15 +40,19 @@ app.include_router(
     tags=["transactions"],
 )
 
-app.include_router(
-    admin_router,
-)
+app.include_router(admin_router)
+
 
 @app.middleware("http")
-async def request_logging_middleware(request: Request, call_next):
+async def request_logging_middleware(
+    request: Request,
+    call_next,
+):
     request_id = str(uuid.uuid4())
     start_time = time.perf_counter()
+
     request.state.request_id = request_id
+
     response = await call_next(request)
 
     duration_ms = (

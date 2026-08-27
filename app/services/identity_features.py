@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.redis_client import redis_client
 
+
 class IdentityStoreUnavailable(Exception):
     """Raised when the Redis identity store is unavailable."""
 
@@ -29,7 +30,6 @@ def check_identity(
     Check whether the device and IP have previously
     been associated with this user.
     """
-
     try:
         device_key = _devices_key(user_id)
         ip_key = _ips_key(user_id)
@@ -65,10 +65,9 @@ def record_identity(
     has been successfully accepted.
 
     Returns:
-        True  -> Redis update succeeded
-        False -> Redis update failed
+        True if the Redis update succeeded.
+        False if the Redis update failed.
     """
-
     try:
         redis_client.sadd(
             _devices_key(user_id),

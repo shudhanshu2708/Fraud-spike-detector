@@ -7,6 +7,7 @@ from jose import jwt
 from app.config import settings
 from app.redis_client import redis_client
 
+
 def create_refresh_token() -> str:
     return secrets.token_urlsafe(32)
 
@@ -30,20 +31,19 @@ def verify_password(
 
 
 def create_access_token(data: dict) -> str:
-    to_encode = data.copy()
-
-    to_encode["exp"] = datetime.now(timezone.utc) + timedelta(
+    payload = data.copy()
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(
         minutes=settings.access_token_expire_minutes
     )
 
     return jwt.encode(
-        to_encode,
+        payload,
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
     )
 
 
-def _decode_redis_value(value) -> str:
+def _decode_redis_value(value: str | bytes) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8")
 
@@ -53,19 +53,16 @@ def _decode_redis_value(value) -> str:
 def store_refresh_token(
     email: str,
     refresh_token: str,
-):
+) -> None:
     expiry_seconds = (
-        settings.refresh_token_expire_days
-        * 24
-        * 60
-        * 60
+        settings.refresh_token_expire_days * 24 * 60 * 60
     )
 
     redis_client.set(
         f"refresh_token:{refresh_token}",
         email,
         ex=expiry_seconds,
-)
+    )
 
     redis_client.sadd(
         f"user_refresh_tokens:{email}",
@@ -77,7 +74,6 @@ def revoke_refresh_token(
     refresh_token: str,
 ) -> str | None:
     key = f"refresh_token:{refresh_token}"
-
     email = redis_client.get(key)
 
     if not email:
@@ -86,7 +82,6 @@ def revoke_refresh_token(
     email = _decode_redis_value(email)
 
     redis_client.delete(key)
-
     redis_client.srem(
         f"user_refresh_tokens:{email}",
         refresh_token,
@@ -99,7 +94,6 @@ def revoke_all_refresh_tokens(
     email: str,
 ) -> int:
     user_key = f"user_refresh_tokens:{email}"
-
     tokens = redis_client.smembers(user_key)
 
     if not tokens:
@@ -109,7 +103,6 @@ def revoke_all_refresh_tokens(
 
     for token in tokens:
         token = _decode_redis_value(token)
-
         token_key = f"refresh_token:{token}"
 
         if redis_client.delete(token_key):

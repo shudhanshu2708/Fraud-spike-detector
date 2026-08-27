@@ -21,11 +21,10 @@ def calculate_risk(
     """
     Calculate fraud risk using the trained ML model.
 
-    The model produces the primary risk score.
-    Rule-based signals are retained only as
-    human-readable explanations.
+    The ML model produces the primary risk score.
+    Rule-based signals are retained as human-readable
+    explanations for the decision.
     """
-
     score = fraud_model.predict_probability(
         amount=amount,
         transactions_1m=transaction_count_1m,
@@ -38,23 +37,15 @@ def calculate_risk(
     reasons: list[str] = []
 
     if transaction_count_1m >= 5:
-        reasons.append(
-            "high_transaction_velocity_1m"
-        )
+        reasons.append("high_transaction_velocity_1m")
     elif transaction_count_1m >= 3:
-        reasons.append(
-            "elevated_transaction_velocity_1m"
-        )
+        reasons.append("elevated_transaction_velocity_1m")
 
     if transaction_count_5m >= 10:
-        reasons.append(
-            "high_transaction_velocity_5m"
-        )
+        reasons.append("high_transaction_velocity_5m")
 
     if amount >= 5000:
-        reasons.append(
-            "high_transaction_amount"
-        )
+        reasons.append("high_transaction_amount")
 
     if new_device:
         reasons.append("new_device")

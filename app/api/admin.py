@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_admin
@@ -30,7 +30,7 @@ def get_all_transactions(
     ),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
-):
+) -> dict:
     query = db.query(Transaction)
 
     if status_filter is not None:
@@ -39,7 +39,6 @@ def get_all_transactions(
         )
 
     total = query.count()
-
     offset = (page - 1) * page_size
 
     transactions = (
@@ -63,7 +62,7 @@ def _update_review_transaction(
     transaction_id: int,
     new_status: str,
     db: Session,
-):
+) -> dict:
     transaction = (
         db.query(Transaction)
         .filter(Transaction.id == transaction_id)
@@ -72,13 +71,13 @@ def _update_review_transaction(
 
     if transaction is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Transaction not found",
         )
 
     if transaction.status != "REVIEW":
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only REVIEW transactions can be updated",
         )
 
@@ -98,7 +97,7 @@ def approve_transaction(
     transaction_id: int,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
-):
+) -> dict:
     return _update_review_transaction(
         transaction_id,
         "APPROVED",
@@ -111,7 +110,7 @@ def reject_transaction(
     transaction_id: int,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
-):
+) -> dict:
     return _update_review_transaction(
         transaction_id,
         "REJECTED",

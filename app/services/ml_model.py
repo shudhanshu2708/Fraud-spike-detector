@@ -10,7 +10,6 @@ MODEL_DIR = BASE_DIR / "data" / "models"
 MODEL_PATH = MODEL_DIR / "fraud_model.joblib"
 SCALER_PATH = MODEL_DIR / "scaler.joblib"
 
-
 FEATURE_NAMES = [
     "amount",
     "transactions_1m",
@@ -45,14 +44,16 @@ class FraudModel:
             raise RuntimeError("Fraud model is not loaded")
 
         features = pd.DataFrame(
-            [[
-                amount,
-                transactions_1m,
-                transactions_5m,
-                amount_5m,
-                int(new_device),
-                int(new_ip),
-            ]],
+            [
+                [
+                    amount,
+                    transactions_1m,
+                    transactions_5m,
+                    amount_5m,
+                    int(new_device),
+                    int(new_ip),
+                ]
+            ],
             columns=FEATURE_NAMES,
         )
 

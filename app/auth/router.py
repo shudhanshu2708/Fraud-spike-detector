@@ -1,90 +1,132 @@
-
-from fastapi import  APIRouter , Depends , HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models.user import User
+
 from app.auth.dependencies import get_current_user
 from app.auth.security import (
-    hash_password,
-    verify_password,
     create_access_token,
-    store_refresh_token,
     create_refresh_token,
-    revoke_refresh_token,
+    hash_password,
     revoke_all_refresh_tokens,
+    revoke_refresh_token,
+    store_refresh_token,
+    verify_password,
 )
+from app.database import get_db
+from app.models.user import User
 from app.schemas.auth import (
-    UserSignup,
-    UserLogin,
-    TokenResponse,
-    RefreshRequest,
     ChangePasswordRequest,
+    RefreshRequest,
+    TokenResponse,
+    UserLogin,
+    UserSignup,
 )
 
 
 router = APIRouter()
 
 
-
 @router.post(
-        "/signup" ,
-          response_model=TokenResponse,
+    "/signup",
+    response_model=TokenResponse,
 )
 def sign_up(
-    user_data: UserSignup ,
+    user_data: UserSignup,
     db: Session = Depends(get_db),
-):
+) -> TokenResponse:
+    existing_user = (
+        db.query(User)
+        .filter(User.email == user_data.email)
+        .first()
+    )
 
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
-        raise HTTPException(status_code=400 , detail="Email already registered")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
+        )
 
-    hashed_pw = hash_password(user_data.password)
-
-    new_user = User(email=user_data.email , password_hash=hashed_pw)
+    new_user = User(
+        email=user_data.email,
+        password_hash=hash_password(user_data.password),
+    )
 
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
 
-    access_token = create_access_token(data={"sub": new_user.email})
+    access_token = create_access_token(
+        data={"sub": new_user.email}
+    )
     refresh_token = create_refresh_token()
-    store_refresh_token(new_user.email , refresh_token)
-    
-    return TokenResponse(access_token=access_token , refresh_token=refresh_token)
-    
-    
-    
 
-@router.post("/login")
-def login( user_data: UserLogin, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
-    if not existing_user:
-        raise HTTPException(status_code=401 , detail="Invalid Credentials")
+    store_refresh_token(
+        new_user.email,
+        refresh_token,
+    )
 
-    if not verify_password(user_data.password, existing_user.password_hash):
-        raise HTTPException(status_code=401 , detail="Invalid Credentials")
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
 
-    access_token = create_access_token(data={"sub": existing_user.email})
+
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+)
+def login(
+    user_data: UserLogin,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    user = (
+        db.query(User)
+        .filter(User.email == user_data.email)
+        .first()
+    )
+
+    if not user or not verify_password(
+        user_data.password,
+        user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Credentials",
+        )
+
+    access_token = create_access_token(
+        data={"sub": user.email}
+    )
     refresh_token = create_refresh_token()
-    store_refresh_token(existing_user.email, refresh_token)
-    return TokenResponse(access_token=access_token , refresh_token=refresh_token)
-    
 
-@router.post("/refresh", response_model=TokenResponse)
-def refresh(data: RefreshRequest):
+    store_refresh_token(
+        user.email,
+        refresh_token,
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+)
+def refresh(
+    data: RefreshRequest,
+) -> TokenResponse:
     email = revoke_refresh_token(data.refresh_token)
 
-    if not email:
+    if email is None:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
 
     access_token = create_access_token(
         data={"sub": email}
     )
-
     refresh_token = create_refresh_token()
 
     store_refresh_token(
@@ -95,31 +137,35 @@ def refresh(data: RefreshRequest):
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-    )  
+    )
+
 
 @router.post("/logout")
-def log_out(
+def logout(
     data: RefreshRequest,
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, str]:
     email = revoke_refresh_token(data.refresh_token)
 
     if email is None:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
 
     if email != current_user.email:
         raise HTTPException(
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Refresh token does not belong to current user",
         )
 
     return {"logout": "ok"}
 
+
 @router.get("/me")
-def me(current_user: User = Depends(get_current_user)):
+def me(
+    current_user: User = Depends(get_current_user),
+) -> dict:
     return {
         "id": current_user.id,
         "email": current_user.email,
@@ -127,24 +173,25 @@ def me(current_user: User = Depends(get_current_user)):
         "created_at": current_user.created_at,
     }
 
+
 @router.post("/change-password")
 def change_password(
     data: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+) -> dict[str, str]:
     if not verify_password(
         data.current_password,
         current_user.password_hash,
     ):
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect",
         )
 
     if data.current_password == data.new_password:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="New password must be different",
         )
 
@@ -162,10 +209,11 @@ def change_password(
         "message": "Password changed successfully"
     }
 
+
 @router.post("/logout-all")
 def logout_all(
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, int | str]:
     revoked = revoke_all_refresh_tokens(
         current_user.email
     )
