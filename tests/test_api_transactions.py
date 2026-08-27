@@ -169,16 +169,16 @@ def test_duplicate_idempotency_key_api(client, db_session):
         json=payload,
     )
 
-    assert second_response.status_code == 201
+    assert second_response.status_code == 200
 
     second_data = second_response.json()
 
     assert second_data["transaction_created"] is False
     assert second_data["decision"] == "ALREADY_PROCESSED"
     assert (
-        second_data["transaction_id"]
-        == first_data["transaction_id"]
-    )
+         second_data["transaction_id"]
+         == first_data["transaction_id"]
+)
 
 
 def test_review_transaction_api(client, db_session, seed_velocity):
@@ -240,7 +240,7 @@ def test_block_transaction_api(client, db_session, seed_velocity):
         },
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 200
 
     data = response.json()
 

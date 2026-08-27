@@ -1,3 +1,4 @@
+import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -10,15 +11,26 @@ from app.auth.router import router as auth_router
 from app.services.ml_model import fraud_model
 
 
+logging.basicConfig(
+    level=logging.INFO,
+    format=(
+        "%(asctime)s | %(levelname)s | "
+        "%(name)s | %(message)s"
+    ),
+)
+
+logger = logging.getLogger("vendly")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     fraud_model.load()
 
-    print("Fraud model loaded successfully.")
+    logger.info("Fraud model loaded successfully.")
 
     yield
 
-    print("Vendly shutting down.")
+    logger.info("Vendly shutting down.")
 
 
 app = FastAPI(
@@ -61,12 +73,14 @@ async def request_logging_middleware(
 
     response.headers["X-Request-ID"] = request_id
 
-    print(
-        f"request_id={request_id} "
-        f"method={request.method} "
-        f"path={request.url.path} "
-        f"status={response.status_code} "
-        f"duration_ms={duration_ms:.2f}"
+    logger.info(
+        "request_id=%s method=%s path=%s "
+        "status=%s duration_ms=%.2f",
+        request_id,
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
     )
 
     return response

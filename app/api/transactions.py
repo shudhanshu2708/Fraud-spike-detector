@@ -5,6 +5,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     status,
 )
 from sqlalchemy.exc import IntegrityError
@@ -70,10 +71,10 @@ def _idempotency_response(
 @router.post(
     "/",
     response_model=TransactionRiskResponse,
-    status_code=status.HTTP_201_CREATED,
 )
 def create_transaction(
     request: Request,
+    response: Response,
     transaction: TransactionCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -105,6 +106,8 @@ def create_transaction(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Idempotency key already used for a different transaction",
             )
+
+        response.status_code = status.HTTP_200_OK
 
         return _idempotency_response(existing_transaction)
 
@@ -142,6 +145,8 @@ def create_transaction(
 
     # 6. Block high-risk transaction
     if risk.decision == "BLOCK":
+        response.status_code = status.HTTP_200_OK
+
         return {
             "transaction_id": None,
             "transaction_created": False,
@@ -204,6 +209,8 @@ def create_transaction(
                 detail="Idempotency key already used for a different transaction",
             )
 
+        response.status_code = status.HTTP_200_OK
+
         return _idempotency_response(existing_transaction)
 
     # 8. Update Redis feature stores
@@ -224,6 +231,9 @@ def create_transaction(
         f"decision={risk.decision} "
         f"risk_score={risk.score}"
     )
+
+    # 9. Return created transaction
+    response.status_code = status.HTTP_201_CREATED
 
     return {
         "transaction_id": new_transaction.id,
