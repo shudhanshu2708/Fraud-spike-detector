@@ -1,11 +1,15 @@
+import enum
+
 from sqlalchemy import Column, Integer, String, DateTime, Enum
 from sqlalchemy.sql import func
+
 from app.database import Base
-import enum
+
 
 class UserRole(str, enum.Enum):
     customer = "customer"
     admin = "admin"
+
 
 class User(Base):
     __tablename__ = "users"
