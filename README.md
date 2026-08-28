@@ -1,4 +1,4 @@
-# [NEW_PROJECT_NAME]
+# Fraud-spike detector
 
 ML-powered transaction fraud detection backend built with FastAPI, PostgreSQL, Redis, and scikit-learn.
 
