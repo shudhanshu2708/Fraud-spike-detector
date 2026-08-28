@@ -88,6 +88,18 @@ class Transaction(Base):
         nullable=True,
     )
 
+    reviewed_by = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+)
+
+    reviewed_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+)
+
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),

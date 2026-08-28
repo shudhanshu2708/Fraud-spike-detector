@@ -174,11 +174,13 @@ def test_duplicate_idempotency_key_api(client, db_session):
     second_data = second_response.json()
 
     assert second_data["transaction_created"] is False
-    assert second_data["decision"] == "ALREADY_PROCESSED"
-    assert (
-         second_data["transaction_id"]
-         == first_data["transaction_id"]
-)
+    assert second_data["status"] == first_data["status"]
+    assert second_data["decision"] == first_data["decision"]
+    assert second_data["risk_score"] == first_data["risk_score"]
+    assert second_data["reasons"] == first_data["reasons"]
+    assert second_data["transaction_id"] == first_data["transaction_id"]
+    assert second_data["created_at"] == first_data["created_at"]
+
 
 
 def test_review_transaction_api(client, db_session, seed_velocity):

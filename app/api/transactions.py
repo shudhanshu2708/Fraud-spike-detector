@@ -44,11 +44,16 @@ def _is_same_transaction(
     transaction: TransactionCreate,
 ) -> bool:
     return (
-        float(existing_transaction.amount) == float(transaction.amount)
-        and existing_transaction.currency == transaction.currency
-        and existing_transaction.merchant_id == transaction.merchant_id
-        and existing_transaction.device_id == transaction.device_id
-        and existing_transaction.ip_address == transaction.ip_address
+        float(existing_transaction.amount)
+        == float(transaction.amount)
+        and existing_transaction.currency
+        == transaction.currency
+        and existing_transaction.merchant_id
+        == transaction.merchant_id
+        and existing_transaction.device_id
+        == transaction.device_id
+        and existing_transaction.ip_address
+        == transaction.ip_address
     )
 
 
@@ -58,13 +63,15 @@ def _idempotency_response(
     return {
         "transaction_id": transaction.id,
         "transaction_created": False,
-        "risk_score": 0.0,
-        "decision": "ALREADY_PROCESSED",
-        "reasons": ["idempotency_key_already_processed"],
+        "status": transaction.status,
+        "risk_score": transaction.risk_score or 0.0,
+        "decision": transaction.risk_decision or "UNKNOWN",
+        "reasons": transaction.risk_reasons or [],
         "transactions_1m": 0,
         "transactions_5m": 0,
         "amount_5m": 0.0,
         "created_at": transaction.created_at,
+        "feature_cache": None,
     }
 
 
@@ -93,7 +100,9 @@ def create_transaction(
     # 2. Idempotency check
     existing_transaction = (
         db.query(Transaction)
-        .filter(Transaction.idempotency_key == idempotency_key)
+        .filter(
+            Transaction.idempotency_key == idempotency_key
+        )
         .first()
     )
 
@@ -104,12 +113,17 @@ def create_transaction(
         ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Idempotency key already used for a different transaction",
+                detail=(
+                    "Idempotency key already used "
+                    "for a different transaction"
+                ),
             )
 
         response.status_code = status.HTTP_200_OK
 
-        return _idempotency_response(existing_transaction)
+        return _idempotency_response(
+            existing_transaction
+        )
 
     # 3. Read current velocity before this transaction
     try:
@@ -117,7 +131,10 @@ def create_transaction(
     except VelocityStoreUnavailable:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Fraud feature store temporarily unavailable",
+            detail=(
+                "Fraud feature store "
+                "temporarily unavailable"
+            ),
         )
 
     # 4. Check device/IP history
@@ -130,7 +147,10 @@ def create_transaction(
     except IdentityStoreUnavailable:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Fraud identity store temporarily unavailable",
+            detail=(
+                "Fraud identity store "
+                "temporarily unavailable"
+            ),
         )
 
     # 5. Calculate risk
@@ -157,6 +177,7 @@ def create_transaction(
             "transactions_5m": velocity.transactions_5m,
             "amount_5m": velocity.amount_5m,
             "created_at": None,
+            "feature_cache": None,
         }
 
     # 7. Persist allowed transaction
@@ -192,7 +213,8 @@ def create_transaction(
         existing_transaction = (
             db.query(Transaction)
             .filter(
-                Transaction.idempotency_key == idempotency_key
+                Transaction.idempotency_key
+                == idempotency_key
             )
             .first()
         )
@@ -206,12 +228,17 @@ def create_transaction(
         ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Idempotency key already used for a different transaction",
+                detail=(
+                    "Idempotency key already used "
+                    "for a different transaction"
+                ),
             )
 
         response.status_code = status.HTTP_200_OK
 
-        return _idempotency_response(existing_transaction)
+        return _idempotency_response(
+            existing_transaction
+        )
 
     # 8. Update Redis feature stores
     redis_velocity_updated = record_transaction(
@@ -259,7 +286,11 @@ def create_transaction(
 )
 def get_transactions(
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
+    page_size: int = Query(
+        default=20,
+        ge=1,
+        le=100,
+    ),
     status_filter: TransactionStatus | None = Query(
         default=None,
         alias="status",
@@ -269,7 +300,10 @@ def get_transactions(
 ):
     query = (
         db.query(Transaction)
-        .filter(Transaction.user_id == current_user.id)
+        .filter(
+            Transaction.user_id
+            == current_user.id
+        )
     )
 
     if status_filter is not None:
@@ -278,11 +312,14 @@ def get_transactions(
         )
 
     total = query.count()
+
     offset = (page - 1) * page_size
 
     transactions = (
         query
-        .order_by(Transaction.created_at.desc())
+        .order_by(
+            Transaction.created_at.desc()
+        )
         .offset(offset)
         .limit(page_size)
         .all()
@@ -293,7 +330,9 @@ def get_transactions(
         "total": total,
         "page": page,
         "page_size": page_size,
-        "has_next": offset + len(transactions) < total,
+        "has_next": (
+            offset + len(transactions) < total
+        ),
     }
 
 
@@ -310,7 +349,8 @@ def get_transaction(
         db.query(Transaction)
         .filter(
             Transaction.id == transaction_id,
-            Transaction.user_id == current_user.id,
+            Transaction.user_id
+            == current_user.id,
         )
         .first()
     )

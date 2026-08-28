@@ -59,6 +59,9 @@ class AdminTransactionResponse(TransactionResponse):
     risk_decision: str | None = None
     risk_reasons: list[str] | None = None
 
+    reviewed_by: int | None = None
+    reviewed_at: datetime | None = None
+
 
 class AdminTransactionListResponse(BaseModel):
     items: list[AdminTransactionResponse]

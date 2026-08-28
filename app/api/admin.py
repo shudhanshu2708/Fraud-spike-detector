@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -61,6 +63,7 @@ def get_all_transactions(
 def _update_review_transaction(
     transaction_id: int,
     new_status: str,
+    current_user: User,
     db: Session,
 ) -> dict:
     transaction = (
@@ -82,6 +85,8 @@ def _update_review_transaction(
         )
 
     transaction.status = new_status
+    transaction.reviewed_by = current_user.id
+    transaction.reviewed_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(transaction)
@@ -89,6 +94,8 @@ def _update_review_transaction(
     return {
         "transaction_id": transaction.id,
         "status": transaction.status,
+        "reviewed_by": transaction.reviewed_by,
+        "reviewed_at": transaction.reviewed_at,
     }
 
 
@@ -101,6 +108,7 @@ def approve_transaction(
     return _update_review_transaction(
         transaction_id,
         "APPROVED",
+        current_user,
         db,
     )
 
@@ -114,5 +122,6 @@ def reject_transaction(
     return _update_review_transaction(
         transaction_id,
         "REJECTED",
+        current_user,
         db,
     )
