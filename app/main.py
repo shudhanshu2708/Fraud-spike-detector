@@ -19,7 +19,7 @@ logging.basicConfig(
     ),
 )
 
-logger = logging.getLogger("vendly")
+logger = logging.getLogger("FraudSpikeDetector")
 
 
 @asynccontextmanager
@@ -30,11 +30,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    logger.info("Vendly shutting down.")
+    logger.info("Fraud-spike detector shutting down.")
 
 
 app = FastAPI(
-    title="Vendly",
+    title="Fraud-Spike Detector",
     version="0.1.0",
     lifespan=lifespan,
 )

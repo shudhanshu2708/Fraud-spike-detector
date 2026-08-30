@@ -84,7 +84,8 @@ def record_transaction(
 
         return True
 
-    except Exception:
+    except Exception as exc:
+        print(f"Redis velocity write failed: {exc}")
         return False
 
 

@@ -27,7 +27,7 @@ FEATURES = [
 
 TARGET = "is_fraud"
 
-THRESHOLD = 0.70
+#THRESHOLD = 0.70
 
 
 def main() -> None:
@@ -43,6 +43,14 @@ def main() -> None:
         MODEL_DIR / "scaler.joblib"
     )
 
+    threshold_config = joblib.load(
+        MODEL_DIR / "thresholds.joblib"
+    )
+
+    threshold = float(
+        threshold_config["block_threshold"]
+    )
+
     X_test = test[FEATURES]
     y_test = test[TARGET]
 
@@ -53,7 +61,7 @@ def main() -> None:
     )[:, 1]
 
     predictions = (
-        probabilities >= THRESHOLD
+        probabilities >= threshold
     ).astype(int)
 
     roc_auc = roc_auc_score(
@@ -81,11 +89,11 @@ def main() -> None:
     print("\nFINAL TEST RESULTS")
     print("==================")
 
-    print(f"Threshold: {THRESHOLD:.2f}")
+    print(f"Threshold: {threshold:.2f}")
     print(f"ROC-AUC:   {roc_auc:.4f}")
     print(f"PR-AUC:    {pr_auc:.4f}")
-    print(f"Precision:  {precision:.4f}")
-    print(f"Recall:     {recall:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall:    {recall:.4f}")
 
     print("\nConfusion Matrix")
     print("================")
@@ -99,6 +107,88 @@ def main() -> None:
     print(f"False Positives: {fp}")
     print(f"False Negatives: {fn}")
     print(f"True Positives:  {tp}")
+
+    # False-positive exposure:
+    # legitimate transactions that the model incorrectly flagged.
+    false_positive_mask = (
+        (y_test == 0)
+        & (predictions == 1)
+    )
+
+    false_positive_transactions = test[
+        false_positive_mask
+    ]
+
+    false_positive_count = len(
+        false_positive_transactions
+    )
+
+    false_positive_amount = (
+        false_positive_transactions["amount"]
+        .sum()
+    )
+
+    false_positive_average = (
+        false_positive_transactions["amount"]
+        .mean()
+        if false_positive_count > 0
+        else 0.0
+    )
+
+    false_positive_median = (
+        false_positive_transactions["amount"]
+        .median()
+        if false_positive_count > 0
+        else 0.0
+    )
+
+    legitimate_count = (
+        y_test == 0
+    ).sum()
+
+    false_positive_rate = (
+        false_positive_count
+        / legitimate_count
+        if legitimate_count > 0
+        else 0.0
+    )
+
+    print("\nFalse-Positive Cost / Exposure")
+    print("==============================")
+
+    print(
+        "False-positive count: "
+        f"{false_positive_count}"
+    )
+
+    print(
+        "False-positive rate: "
+        f"{false_positive_rate:.4%}"
+    )
+
+    print(
+        "Legitimate transaction value "
+        "incorrectly flagged: "
+        f"₹{false_positive_amount:,.2f}"
+    )
+
+    print(
+        "Average false-positive amount: "
+        f"₹{false_positive_average:,.2f}"
+    )
+
+    print(
+        "Median false-positive amount: "
+        f"₹{false_positive_median:,.2f}"
+    )
+
+    print(
+        "\nNote: The legitimate transaction value "
+        "above is reported as false-positive "
+        "exposure, not claimed as actual business "
+        "loss. The dataset does not contain real "
+        "merchant loss or operational cost data."
+    )
 
     print("\nClassification Report")
     print("=====================")

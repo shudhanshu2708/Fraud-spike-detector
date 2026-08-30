@@ -44,6 +44,9 @@ def calculate_risk(
     if transaction_count_5m >= 10:
         reasons.append("high_transaction_velocity_5m")
 
+    if amount_5m >= 5000:
+        reasons.append("high_amount_velocity_5m")
+
     if amount >= 5000:
         reasons.append("high_transaction_amount")
 
@@ -54,6 +57,9 @@ def calculate_risk(
         reasons.append("new_ip")
 
     decision = fraud_model.decide(score)
+
+    if decision == "SAFE":
+        reasons = ["low_fraud_risk"]
 
     return RiskResult(
         score=score,

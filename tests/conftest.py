@@ -1,9 +1,6 @@
 import pytest
 import redis
 
-import pytest
-import redis
-
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -25,8 +22,8 @@ test_redis = redis.Redis.from_url(
 )
 
 TEST_DATABASE_URL = (
-    "postgresql://vendly_user:vendly_pass"
-    "@localhost:5433/vendly_test"
+    "postgresql://fraud_user:fraud_pass"
+    "@localhost:5433/fraud_spike_detector"
 )
 
 test_engine = create_engine(TEST_DATABASE_URL)
