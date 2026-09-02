@@ -246,8 +246,9 @@ def test_block_transaction_api(client, db_session, seed_velocity):
 
     data = response.json()
 
-    assert data["transaction_created"] is False
-    assert data["transaction_id"] is None
+    assert data["transaction_created"] is True
+    assert data["transaction_id"] is not None
+    assert data["status"] == "BLOCKED"
     assert data["decision"] == "BLOCK"
     assert data["risk_score"] >= 0.70
 

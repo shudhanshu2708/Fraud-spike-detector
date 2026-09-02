@@ -6,7 +6,12 @@ from pydantic import BaseModel
 class FeatureCacheStatus(BaseModel):
     velocity_updated: bool
     identity_updated: bool
-
+    
+class TransactionStatsResponse(BaseModel):
+    total: int
+    approved: int
+    review: int
+    blocked: int
 
 class TransactionRiskResponse(BaseModel):
     transaction_id: int | None = None

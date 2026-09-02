@@ -8,6 +8,7 @@ TransactionStatus = Literal[
     "APPROVED",
     "REVIEW",
     "REJECTED",
+    "BLOCKED",
 ]
 
 

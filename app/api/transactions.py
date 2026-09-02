@@ -15,7 +15,10 @@ from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.transaction import Transaction
 from app.models.user import User
-from app.schemas.risk import TransactionRiskResponse
+from app.schemas.risk import (
+    TransactionRiskResponse,
+    TransactionStatsResponse,
+)
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionListResponse,
@@ -164,21 +167,75 @@ def create_transaction(
     )
 
     # 6. Block high-risk transaction
+    # 6. Persist blocked transaction attempt
     if risk.decision == "BLOCK":
+        blocked_transaction = Transaction(
+            user_id=current_user.id,
+            amount=transaction.amount,
+            currency=transaction.currency,
+            merchant_id=transaction.merchant_id,
+            device_id=transaction.device_id,
+            ip_address=transaction.ip_address,
+            idempotency_key=idempotency_key,
+            status="BLOCKED",
+            risk_score=risk.score,
+            risk_decision="BLOCK",
+            risk_reasons=risk.reasons,
+    )
+
+        try:
+             db.add(blocked_transaction)
+             db.commit()
+             db.refresh(blocked_transaction)
+
+        except IntegrityError as exc:
+             db.rollback()
+
+             if "ix_transactions_idempotency_key" not in str(exc):
+                raise
+
+             existing_transaction = (
+                  db.query(Transaction)
+                  .filter(
+                     Transaction.idempotency_key == idempotency_key
+            )
+             .first()
+        )
+
+             if existing_transaction is None:
+                raise
+
+             if not _is_same_transaction(
+                existing_transaction,
+                transaction,
+        ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Idempotency key already used "
+                        "for a different transaction"
+                ),
+            )
+
+             response.status_code = status.HTTP_200_OK
+
+             return _idempotency_response(existing_transaction)
+
         response.status_code = status.HTTP_200_OK
 
         return {
-            "transaction_id": None,
-            "transaction_created": False,
-            "risk_score": risk.score,
-            "decision": "BLOCK",
-            "reasons": risk.reasons,
+           "transaction_id": blocked_transaction.id,
+           "transaction_created": True,
+           "status": "BLOCKED",
+           "risk_score": risk.score,
+           "decision": "BLOCK",
+           "reasons": risk.reasons,
             "transactions_1m": velocity.transactions_1m,
-            "transactions_5m": velocity.transactions_5m,
-            "amount_5m": velocity.amount_5m,
-            "created_at": None,
-            "feature_cache": None,
-        }
+           "transactions_5m": velocity.transactions_5m,
+           "amount_5m": velocity.amount_5m,
+           "created_at": blocked_transaction.created_at,
+           "feature_cache": None,
+    }
 
     # 7. Persist allowed transaction
     new_transaction = Transaction(
@@ -279,6 +336,38 @@ def create_transaction(
         },
     }
 
+@router.get(
+    "/stats",
+    response_model=TransactionStatsResponse,
+)
+def get_transaction_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    query = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id
+    )
+
+    total = query.count()
+
+    approved = query.filter(
+        Transaction.status == "APPROVED"
+    ).count()
+
+    review = query.filter(
+        Transaction.status == "REVIEW"
+    ).count()
+
+    blocked = query.filter(
+        Transaction.status == "BLOCKED"
+    ).count()
+
+    return {
+        "total": total,
+        "approved": approved,
+        "review": review,
+        "blocked": blocked,
+    }
 
 @router.get(
     "/",
